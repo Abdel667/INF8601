@@ -131,7 +131,7 @@ static int display() {
     }
 
     if (viewer->sinoscope->handler(viewer->sinoscope) < 0) {
-        LOG_ERROR("failed to call sinoscope handler `%s`\n", viewer->sinoscope->name);
+        // LOG_ERROR("failed to call sinoscope handler `%s`\n", viewer->sinoscope->name);
         goto fail_exit;
     }
 
@@ -203,7 +203,7 @@ static void callback_display() {
     }
 
     if (display() < 0) {
-        LOG_ERROR("display failed");
+        // LOG_ERROR("display failed");
     }
 
     post_display();
