@@ -13,47 +13,35 @@ int sinoscope_image_openmp(sinoscope_t* sinoscope) {
         return -1;
     }
 
-#pragma omp parallel shared(sinoscope)
-    {
-        sinoscope_t local_sinoscope;
-        local_sinoscope.width            = sinoscope->width;
-        local_sinoscope.height           = sinoscope->height;
-        local_sinoscope.dx               = sinoscope->dx;
-        local_sinoscope.dy               = sinoscope->dy;
-        local_sinoscope.taylor           = sinoscope->taylor;
-        local_sinoscope.phase0           = sinoscope->phase0;
-        local_sinoscope.phase1           = sinoscope->phase1;
-        local_sinoscope.time             = sinoscope->time;
-        local_sinoscope.interval         = sinoscope->interval;
-        local_sinoscope.interval_inverse = sinoscope->interval_inverse;
+    
+    float px, py;
+    pixel_t pixel;
+    int index;
+    float value;
 
-        float cst = 2 * M_PI;
+#pragma omp parallel private(px, py, index, pixel) 
+#pragma omp for schedule(dynamic) reduction(+: value)
+for (int i = 0; i < sinoscope->width; i++) {
+        py    = sinoscope->dy * i - 2 * M_PI;;
+        for (int j = 0; j < sinoscope->height; j++) {
+            px    = sinoscope->dx * j - 2 * M_PI;;
+            value = 0;
 
-#pragma omp for collapse(2) schedule(dynamic)
-        for (int i = 0; i < local_sinoscope.height; i++) {
-            for (int j = 0; j < local_sinoscope.width; j++) {
-                float py    = local_sinoscope.dy * i - cst;
-                float px    = local_sinoscope.dx * j - cst;
-                float value = 0;
-
-#pragma omp simd reduction(+ : value)
-                for (int k = 1; k <= sinoscope->taylor; k += 2) {
-                    value += sin(px * k * sinoscope->phase1 + sinoscope->time) / k;
-                    value += cos(py * k * sinoscope->phase0) / k;
-                }
-
-                value = (atan(value) - atan(-value)) / M_PI;
-                value = (value + 1) * 100;
-
-                pixel_t pixel;
-                color_value(&pixel, value, local_sinoscope.interval, local_sinoscope.interval_inverse);
-
-                int index = (i * 3) + (j * 3) * local_sinoscope.width;
-
-                sinoscope->buffer[index + 0] = pixel.bytes[0];
-                sinoscope->buffer[index + 1] = pixel.bytes[1];
-                sinoscope->buffer[index + 2] = pixel.bytes[2];
+            for (int k = 1; k <= sinoscope->taylor; k += 2) {
+                value += sin(px * k * sinoscope->phase1 + sinoscope->time) / k;
+                value += cos(py * k * sinoscope->phase0) / k;
             }
+
+            value = (2 * atan(value)) / M_PI;
+            value = (value + 1) * 100;
+
+            color_value(&pixel, value, sinoscope->interval, sinoscope->interval_inverse);
+
+            index = (i * 3) + (j * 3) * sinoscope->width;
+
+            sinoscope->buffer[index + 0] = pixel.bytes[0];
+            sinoscope->buffer[index + 1] = pixel.bytes[1];
+            sinoscope->buffer[index + 2] = pixel.bytes[2];
         }
     }
 
