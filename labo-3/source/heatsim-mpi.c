@@ -243,8 +243,33 @@ int heatsim_exchange_borders(heatsim_t* heatsim, grid_t* grid) {
      *       Utilisez `grid_get_cell` pour obtenir un pointeur vers une cellule.
      */
 
-fail_exit:
-    return -1;
+    // sending the north/south edges first -----------------------------  
+    MPI_Request borders[8];
+    MPI_Status status[8];
+
+    MPI_Datatype contiguous;
+    MPI_Type_contiguous(grid->width, MPI_DOUBLE, &contiguous);
+    MPI_Type_commit(&contiguous);
+
+    MPI_Isend(grid_get_cell(grid, 0, 0), 1 , contiguous, heatsim->rank_north_peer, 0, heatsim->communicator, &borders[0]);
+    MPI_Isend(grid_get_cell(grid, 0, grid->height - 1), 1 , contiguous, heatsim->rank_south_peer, 1, heatsim->communicator, &borders[1]);
+
+    // sending the east/west edges now -----------------------------
+    MPI_Datatype vector;
+    MPI_Type_vector(grid->height, 1, grid->width_padded, MPI_DOUBLE, &vector);
+    MPI_Type_commit(&vector);
+
+    MPI_Isend(grid_get_cell(grid, 0, 0), 1 , vector, heatsim->rank_west_peer, 2, heatsim->communicator, &borders[2]);
+    MPI_Isend(grid_get_cell(grid, grid->width -1, 0), 1 , vector, heatsim->rank_east_peer, 3, heatsim->communicator, &borders[3]);
+
+    // recieving the edges now ---------------------------------------
+    MPI_Irecv(grid_get_cell(grid, 0, grid->height), 1, contiguous, heatsim->rank_south_peer, 0, heatsim->communicator, &borders[4]);
+    MPI_Irecv(grid_get_cell(grid, 0, -1), 1, contiguous, heatsim->rank_north_peer, 1, heatsim->communicator, &borders[5]);
+    MPI_Irecv(grid_get_cell(grid, grid->width, 0), 1, vector, heatsim->rank_east_peer, 2, heatsim->communicator, &borders[6]);
+    MPI_Irecv(grid_get_cell(grid, -1, 0), 1, vector, heatsim->rank_west_peer, 3, heatsim->communicator, &borders[7]);
+
+    MPI_Waitall(8, borders, status);
+    return 0;
 }
 
 int heatsim_send_result(heatsim_t* heatsim, grid_t* grid) {
