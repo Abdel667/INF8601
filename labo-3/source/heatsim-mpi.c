@@ -64,6 +64,21 @@ int heatsim_init(heatsim_t* heatsim, unsigned int dim_x, unsigned int dim_y) {
     }
 }
 
+typedef struct data {
+  double *data;
+} data_t;
+
+void create_data_type(MPI_Datatype *data_type) {
+    MPI_Datatype field_types[1] = {MPI_AINT}; // MPI_AINT for pointer addresses
+    int field_lengths[1] = {1};
+    MPI_Aint field_offsets[1];
+
+    field_offsets[0] = offsetof(data_t, data); // Offset of the pointer field
+
+    MPI_Type_create_struct(1, field_lengths, field_offsets, field_types, data_type);
+    MPI_Type_commit(data_type);
+}
+
 int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
     /*
      * TODO: Envoyer toutes les `grid` aux autres rangs. Cette fonction
@@ -81,45 +96,31 @@ int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
     int ierr;
 
     // Le processus principal envoie les grilles aux autres rangs.
-    for (unsigned int x = 0; x < cart->grid_x_count; x++) {
-        for (unsigned int y = 0; y < cart->grid_y_count; y++) {
-            // Obtenez la grille à la position (x, y).
-            grid_t* grid = cart2d_get_grid(cart, x, y);
-            if (!grid) {
-                fprintf(stderr, "Erreur : la grille à (%d, %d) est NULL.\n", x, y);
-                continue;
-            }
+    for (unsigned int i = 1; i < ; x++){
+        int localCoords[2];
+        ierr = MPI_Cart_coords(heatsim->communicator, i, 2, localCoords);
+        grid_t* grid = cart2d_get_grid(cart, localCoords[0], localCoords[1]);
 
-            // Déterminez le rang du processus correspondant aux coordonnées (x, y).
-            int coords[2] = {x, y};
-            int dest_rank;
-            ierr = MPI_Cart_rank(heatsim->communicator, coords, &dest_rank);
-            if (ierr != MPI_SUCCESS) {
-                fprintf(stderr, "Erreur : impossible d'obtenir le rang pour (%d, %d).\n", x, y);
-                continue;
-            }
-
-            // Si c'est le rang 0, pas besoin d'envoyer (car il s'agit du processus principal lui-même).
-            if (dest_rank == 0) {
-                continue;
-            }
-
-            // Préparez les paramètres à envoyer.
-            unsigned int params[3] = {grid->width, grid->height, (unsigned int)grid->padding};
-
-            // Envoyez les paramètres de la grille (width, height, padding).
-            MPI_Send(params, 3, MPI_UNSIGNED, dest_rank, 0, heatsim->communicator);
-
-            // Envoyez les données de la grille.
-            int data_size = grid->width * grid->height;
-            MPI_Send(grid->data, data_size, MPI_DOUBLE, dest_rank, 0, heatsim->communicator);
+        if (!grid) {
+            fprintf(stderr, "Erreur : la grille à (%d, %d) est NULL.\n", x, y);
+            continue;
         }
-    }
-    return 0;
 
-    fail_exit:
-        return -1;
+        unsigned int params[3] = {grid->width, grid->height, (unsigned int)grid->padding};
+
+        // Envoyez les paramètres de la grille (width, height, padding).
+        MPI_Send(params, 3, MPI_UNSIGNED, i, 0, heatsim->communicator);
+        
+        MPI_Datatype data_type;
+        create_data_type(&data_type);
+
+        MPI_Send(grid->data, 1, data_type, i, 0, heatsim->communicator);
     }
+return 0;
+
+fail_exit:
+    return -1;
+}
 
 grid_t* heatsim_receive_grid(heatsim_t* heatsim) { //avec MPI_Irecv
     /*
