@@ -1,3 +1,5 @@
+// Abdel Sant'anna. inspired by https://github.com/Wassim27/INF8601/blob/main/TP3/source/heatsim-mpi.c
+
 #include <assert.h>
 #include <mpi.h>
 #include <stddef.h>
@@ -119,7 +121,7 @@ int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
         unsigned int params[3] = {grid->width, grid->height, (unsigned int)grid->padding};
 
         // Send grid parameters (width, height, padding).
-        MPI_ISend(params, 3, MPI_UNSIGNED, i, 0, heatsim->communicator, &request);
+        MPI_ISend(&params, 3, MPI_UNSIGNED, i, 0, heatsim->communicator, &request);
         ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
         if (ierr != MPI_SUCCESS) {
         LOG_ERROR_MPI("Error waiting : ", ret);
@@ -140,6 +142,7 @@ int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
         LOG_ERROR_MPI("Error waiting : ", ret);
         goto fail_exit;
         }
+        MPI_Type_free(&data_type);
     }
 
     return 0;
@@ -158,9 +161,37 @@ grid_t* heatsim_receive_grid(heatsim_t* heatsim) { //avec MPI_Irecv
      *       Utilisez `grid_create` pour allouer le `grid` à retourner.
      */
     // Postez les réceptions asynchrones
-    int* recv_buf = malloc((size - 1) * sizeof(int));
-    MPI_Irecv(&recv_buf[i - 1], 1, MPI_INT, i, tag, MPI_COMM_WORLD, &requests[i - 1]);
-    free(recv_buf);
+    int ierr = MPI_SUCCESS;
+    unsigned int params[3];
+    MPI_Request request;
+
+    ierr = MPI_Irecv(&dimensions, 3, MPI_UNSIGNED, 0, 0, heatsim->communicator, &request);
+
+    ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
+    if (ierr != MPI_SUCCESS) {
+        LOG_ERROR_MPI("Error Wait receive data : ", ret);
+        goto fail_exit;
+    }
+    grid_t *newGrid = grid_create(params[0], params[1], params[2]);
+
+    // partie 2
+
+    MPI_Datatype data_type = grid_data_struct(newGrid->width_padded * newGrid->height_padded);
+
+    ierr = MPI_Irecv(newGrid->data, newGrid->width_padded * newGrid->height_padded,
+                    data_type, 0, 4, heatsim->communicator, &request);
+    if (ierr != MPI_SUCCESS) {
+        LOG_ERROR_MPI("Error receive data : ", ret);
+        goto fail_exit;
+    }
+
+    ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
+    if (ierr != MPI_SUCCESS) {
+        LOG_ERROR_MPI("Error Wait receive data : ", ret);
+        goto fail_exit;
+    }
+
+    return newGrid;
 
 fail_exit:
     return NULL;
