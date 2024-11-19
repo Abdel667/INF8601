@@ -65,16 +65,18 @@ int heatsim_init(heatsim_t* heatsim, unsigned int dim_x, unsigned int dim_y) {
 }
 
 typedef struct data {
-  double *data;
+    double *data; // Pointer to double
 } data_t;
 
 void create_data_type(MPI_Datatype *data_type) {
-    MPI_Datatype field_types[1] = {MPI_AINT}; // MPI_AINT for pointer addresses
+    MPI_Datatype field_types[1] = {MPI_AINT}; // Use MPI_AINT for the pointer
     int field_lengths[1] = {1};
     MPI_Aint field_offsets[1];
 
+    // Correct the offset to point to the 'data' field
     field_offsets[0] = offsetof(data_t, data); // Offset of the pointer field
 
+    // Create the MPI data type
     MPI_Type_create_struct(1, field_lengths, field_offsets, field_types, data_type);
     MPI_Type_commit(data_type);
 }
@@ -95,28 +97,41 @@ int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
 
     int ierr;
 
-    // Le processus principal envoie les grilles aux autres rangs.
-    for (unsigned int i = 1; i < ; x++){
+    // The main process sends grids to other ranks.
+    for (unsigned int i = 1; i < heatsim->num_ranks; i++) {
         int localCoords[2];
         ierr = MPI_Cart_coords(heatsim->communicator, i, 2, localCoords);
+        if (ierr != MPI_SUCCESS) {
+            fprintf(stderr, "Error getting coordinates for rank %d.\n", i);
+            goto fail_exit;
+        }
+
         grid_t* grid = cart2d_get_grid(cart, localCoords[0], localCoords[1]);
 
         if (!grid) {
-            fprintf(stderr, "Erreur : la grille à (%d, %d) est NULL.\n", x, y);
+            fprintf(stderr, "Error: grid at (%d, %d) is NULL.\n", localCoords[0], localCoords[1]);
             continue;
         }
 
         unsigned int params[3] = {grid->width, grid->height, (unsigned int)grid->padding};
 
-        // Envoyez les paramètres de la grille (width, height, padding).
+        // Send grid parameters (width, height, padding).
         MPI_Send(params, 3, MPI_UNSIGNED, i, 0, heatsim->communicator);
         
+        // Create the custom data type for the pointer
         MPI_Datatype data_type;
         create_data_type(&data_type);
 
-        MPI_Send(grid->data, 1, data_type, i, 0, heatsim->communicator);
+        // Send the pointer to the grid data
+        ierr = MPI_Send(&(grid->data), 1, data_type, i, 1, heatsim->communicator);
+        if (ierr != MPI_SUCCESS) {
+            fprintf(stderr, "Error sending grid data pointer to rank %d.\n", i);
+            goto fail_exit;
+        }
+        // Free the custom data type after use
+        MPI_Type_free(&data_type);
     }
-return 0;
+    return 0;
 
 fail_exit:
     return -1;
