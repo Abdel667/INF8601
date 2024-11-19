@@ -103,7 +103,7 @@ int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
     MPI_Request request;
 
     // The main process sends grids to other ranks.
-    for (unsigned int i = 1; i < heatsim->num_ranks; i++) {
+    for (unsigned int i = 1; i < heatsim->rank_count; i++) {
         int localCoords[2];
         ierr = MPI_Cart_coords(heatsim->communicator, i, 2, localCoords);
         if (ierr != MPI_SUCCESS) {
@@ -121,10 +121,10 @@ int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
         unsigned int params[3] = {grid->width, grid->height, (unsigned int)grid->padding};
 
         // Send grid parameters (width, height, padding).
-        MPI_ISend(&params, 3, MPI_UNSIGNED, i, 0, heatsim->communicator, &request);
+        MPI_Isend(&params, 3, MPI_UNSIGNED, i, 0, heatsim->communicator, &request);
         ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
         if (ierr != MPI_SUCCESS) {
-        LOG_ERROR_MPI("Error waiting : ", ret);
+        LOG_ERROR_MPI("Error waiting : ", ierr);
         goto fail_exit;
         }
         
@@ -132,14 +132,14 @@ int heatsim_send_grids(heatsim_t* heatsim, cart2d_t* cart) {
 
         // NOTE: Pas de & car grid->data est deja un pointeur
         ierr = MPI_Isend(grid->data, 1, data_type, i, 4, heatsim->communicator, &request);
-        if (ret != MPI_SUCCESS) {
-        LOG_ERROR_MPI("Error send data : ", ret);
+        if (ierr != MPI_SUCCESS) {
+        LOG_ERROR_MPI("Error send data : ", ierr);
         goto fail_exit;
         }
 
         ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
         if (ierr != MPI_SUCCESS) {
-        LOG_ERROR_MPI("Error waiting : ", ret);
+        LOG_ERROR_MPI("Error waiting : ", ierr);
         goto fail_exit;
         }
         MPI_Type_free(&data_type);
@@ -165,11 +165,11 @@ grid_t* heatsim_receive_grid(heatsim_t* heatsim) { //avec MPI_Irecv
     unsigned int params[3];
     MPI_Request request;
 
-    ierr = MPI_Irecv(&dimensions, 3, MPI_UNSIGNED, 0, 0, heatsim->communicator, &request);
+    ierr = MPI_Irecv(&params, 3, MPI_UNSIGNED, 0, 0, heatsim->communicator, &request);
 
     ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
     if (ierr != MPI_SUCCESS) {
-        LOG_ERROR_MPI("Error Wait receive data : ", ret);
+        LOG_ERROR_MPI("Error Wait receive data : ", ierr);
         goto fail_exit;
     }
     grid_t *newGrid = grid_create(params[0], params[1], params[2]);
@@ -181,13 +181,13 @@ grid_t* heatsim_receive_grid(heatsim_t* heatsim) { //avec MPI_Irecv
     ierr = MPI_Irecv(newGrid->data, newGrid->width_padded * newGrid->height_padded,
                     data_type, 0, 4, heatsim->communicator, &request);
     if (ierr != MPI_SUCCESS) {
-        LOG_ERROR_MPI("Error receive data : ", ret);
+        LOG_ERROR_MPI("Error receive data : ", ierr);
         goto fail_exit;
     }
 
     ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
     if (ierr != MPI_SUCCESS) {
-        LOG_ERROR_MPI("Error Wait receive data : ", ret);
+        LOG_ERROR_MPI("Error Wait receive data : ", ierr);
         goto fail_exit;
     }
 
